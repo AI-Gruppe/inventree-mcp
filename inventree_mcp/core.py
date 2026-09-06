@@ -2,13 +2,15 @@
 
 from typing import ClassVar
 
+from django.urls import reverse_lazy
 from plugin import InvenTreePlugin
 from plugin.mixins import SettingsMixin, UrlsMixin
 
 from . import PLUGIN_VERSION
+from ._well_known_compat import WellKnownMixin
 
 
-class InvenTreeMCP(SettingsMixin, UrlsMixin, InvenTreePlugin):
+class InvenTreeMCP(WellKnownMixin, SettingsMixin, UrlsMixin, InvenTreePlugin):
     """InvenTreeMCP - custom InvenTree plugin."""
 
     # Plugin metadata
@@ -53,6 +55,13 @@ class InvenTreeMCP(SettingsMixin, UrlsMixin, InvenTreePlugin):
     # Ref: https://docs.inventree.org/en/latest/plugins/mixins/urls/
     def setup_urls(self):
         """Configure custom URL endpoints for this plugin."""
-        from .mcp_transport import urlpatterns
+        from .mcp_transport import urlpatterns as mcp_urlpatterns
+        from .server_card import urlpatterns as server_card_urlpatterns
 
-        return urlpatterns
+        return mcp_urlpatterns + server_card_urlpatterns
+
+    # Well-known URLs (from WellKnownMixin, if the running InvenTree provides it)
+    # Ref: https://github.com/inventree/inventree-mcp/issues/33
+    def get_well_known_urls(self, request=None):
+        """Advertise this plugin's MCP Server Card under /.well-known/."""
+        return [("mcp-server-card", reverse_lazy(f"plugin:{self.slug}:server-card"))]
