@@ -2444,7 +2444,14 @@ class ServerCardTest(InvenTreeTestCase):
         wellknownindexview's request.build_absolute_uri() rejects an
         untrusted host otherwise.
         """
-        response = Client().get(reverse("well-known:index"))
+
+        import django.urls.exceptions
+
+        try:
+            response = Client().get(reverse("well-known:index"))
+        except django.urls.exceptions.NoReverseMatch:
+            # Exit early, this version of the InvenTree server does not have the well-known index.
+            return
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -2467,7 +2474,12 @@ class WellKnownCompatTest(unittest.TestCase):
 
         from . import _well_known_compat
 
-        real_mixin = plugin_mixins.WellKnownMixin
+        try:
+            real_mixin = plugin_mixins.WellKnownMixin
+        except AttributeError:
+            # Exit early - the WellKnownMixin does not exist in this version of plugin.mixins
+            return
+
         del plugin_mixins.WellKnownMixin
         try:
             reloaded = importlib.reload(_well_known_compat)
