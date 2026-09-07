@@ -10,6 +10,7 @@ credential must not be enough on its own.
 from __future__ import annotations
 
 import datetime
+import importlib
 import json
 import sys
 import unittest
@@ -27,11 +28,13 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.contenttypes.models import ContentType
 from django.test import Client, override_settings
+from django.urls import reverse
 from django.utils import timezone
 from InvenTree.api_version import INVENTREE_API_VERSION
 from InvenTree.unit_test import InvenTreeTestCase
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult
+from mcp_types.version import SUPPORTED_PROTOCOL_VERSIONS
 from oauth2_provider.models import AccessToken, Application
 from order.models import (
     PurchaseOrder,
@@ -55,11 +58,12 @@ from stock.models import (
 )
 from users.models import ApiToken
 
-from . import context, tool_visibility, view_resolution
+from . import PLUGIN_VERSION, context, tool_visibility, view_resolution
 from .filter_introspection import _default_ordering_fields
 from .mcp_server import mcp
 from .proxy import call_view
 from .schema_introspection import paginated_schema, serializer_schema
+from .server_card import SERVER_CARD_SCHEMA, build_server_card
 from .settings import get_plugin_setting
 from .tools import discovery
 from .tools._common import DEFAULT_LIMIT, MAX_LIMIT, build_query_params, clamp_limit
@@ -2368,3 +2372,120 @@ class ListToolDefaultLimitTest(InvenTreeTestCase):
         }
 
         self.assertEqual(wrong_defaults, {})
+
+
+@override_settings(PLUGIN_TESTING_SETUP=True)
+class ServerCardTest(InvenTreeTestCase):
+    """Regression tests for the MCP Server Card well-known endpoint (server_card.py).
+
+    Implements SEP-2127 (https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127)
+
+    Tests that the card is reachable and correctly shaped, and - separately, since
+    the two are independent failure modes - that it's actually wired into
+    WellKnownMixin (core.py's get_well_known_urls())
+    """
+
+    URL = "/plugin/inventree-mcp/server-card/"
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+
+        registry.reload_plugins(full_reload=True, collect=True)
+        registry.set_plugin_state("inventree-mcp", True)
+
+    def test_server_card_is_reachable_without_authentication(self):
+        """Discovery metadata only, no InvenTree data - unlike the real MCP
+        endpoint (see MCPTransportTest.test_unauthenticated_request_rejected_by_default),
+        this must not require a credential.
+        """
+        response = Client().get(self.URL)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+
+    def test_server_card_matches_the_sep_2127_shape(self):
+        response = Client().get(self.URL)
+        card = response.json()
+
+        self.assertEqual(card["$schema"], SERVER_CARD_SCHEMA)
+        # Reverse-DNS namespace + "/" + server name, per the schema's pattern.
+        self.assertRegex(card["name"], r"^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$")
+        self.assertEqual(card["version"], PLUGIN_VERSION)
+
+        [remote] = card["remotes"]
+        self.assertEqual(remote["type"], "streamable-http")
+        self.assertTrue(remote["url"].endswith("/plugin/inventree-mcp/mcp/"))
+        self.assertEqual(
+            remote["supportedProtocolVersions"], list(SUPPORTED_PROTOCOL_VERSIONS)
+        )
+
+    def test_build_server_card_resolves_a_real_absolute_mcp_url(self):
+        """Direct unit test of build_server_card() - the request-scoped absolute
+        URL building is the one part the HTTP-level tests above don't isolate.
+        """
+        response = Client().get(self.URL)
+        card = build_server_card(response.wsgi_request)
+
+        self.assertTrue(card["remotes"][0]["url"].startswith("http"))
+        self.assertIn("/plugin/inventree-mcp/mcp/", card["remotes"][0]["url"])
+
+    @override_settings(
+        SITE_URL="http://testserver", CSRF_TRUSTED_ORIGINS=["http://testserver"]
+    )
+    def test_server_card_is_discoverable_via_the_well_known_index(self):
+        """End-to-end regression test for InvenTreeMCP.get_well_known_urls() -
+        proves the card is reachable via InvenTree's aggregated /.well-known/
+        index (plugin/urls.py's wellknownindexview), the same mechanism the
+        built-in InvenTreeWellKnown plugin uses for passkey-endpoints.
+
+        The SITE_URL/CSRF_TRUSTED_ORIGINS override matches
+        InvenTreeWellKnownTest.test_well_known_urls in InvenTree core -
+        wellknownindexview's request.build_absolute_uri() rejects an
+        untrusted host otherwise.
+        """
+
+        import django.urls.exceptions
+
+        try:
+            response = Client().get(reverse("well-known:index"))
+        except django.urls.exceptions.NoReverseMatch:
+            # Exit early, this version of the InvenTree server does not have the well-known index.
+            return
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("mcp-server-card", data["well_known_urls"])
+        self.assertTrue(data["well_known_urls"]["mcp-server-card"].endswith(self.URL))
+
+
+class WellKnownCompatTest(unittest.TestCase):
+    """Regression test for _well_known_compat.py's WellKnownMixin fallback.
+
+    WellKnownMixin was added in inventree/InvenTree#12698 (merged to master,
+    not yet in a "stable" release as of writing) - InvenTreeMCP must still
+    import and load cleanly on InvenTree versions that don't provide it.
+    Simulates that by deleting the real mixin from plugin.mixins and
+    reloading the compat shim, rather than actually downgrading InvenTree.
+    """
+
+    def test_falls_back_to_a_blank_mixin_when_plugin_mixins_lacks_it(self):
+        import plugin.mixins as plugin_mixins
+
+        from . import _well_known_compat
+
+        try:
+            real_mixin = plugin_mixins.WellKnownMixin
+        except AttributeError:
+            # Exit early - the WellKnownMixin does not exist in this version of plugin.mixins
+            return
+
+        del plugin_mixins.WellKnownMixin
+        try:
+            reloaded = importlib.reload(_well_known_compat)
+
+            self.assertIsNot(reloaded.WellKnownMixin, real_mixin)
+            self.assertEqual(reloaded.WellKnownMixin().get_well_known_urls(), [])
+        finally:
+            plugin_mixins.WellKnownMixin = real_mixin
+            importlib.reload(_well_known_compat)

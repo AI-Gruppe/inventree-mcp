@@ -35,6 +35,10 @@ duplicate the check per-tool or bypass `call_view()`.
 - `expand_introspection.py` - derives optional output-expansion flags (e.g. `part_detail`) from a
   view's real `output_options`.
 - `core.py` - the `InvenTreePlugin` subclass, `REQUIRE_AUTH` and `MCP_READ_ONLY` settings.
+- `server_card.py` - serves an MCP Server Card (SEP-2127) at `plugin/inventree-mcp/server-card/`
+  for discovery, advertised under `/.well-known/` via `core.py`'s `get_well_known_urls()`.
+- `_well_known_compat.py` - `WellKnownMixin` import, falling back to a blank mixin on InvenTree
+  versions predating `inventree/InvenTree#12698` (not yet in a "stable" release as of writing).
 
 ## Testing
 
