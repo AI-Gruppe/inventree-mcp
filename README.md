@@ -15,11 +15,14 @@ Every tool is a thin wrapper around InvenTree's own REST API view classes (see
 requests go through exactly the same permission checks, filtering, and serialization as the regular
 REST API. Tool code never queries the Django ORM directly.
 
-Currently read-only, covering parts, stock items/locations, part categories, purchase/sales/return/
-build orders (with line items and allocations), companies, contacts, addresses, manufacturer/
-supplier parts, BOM items, attachments, parameters, stock tracking history, test results, and
-project codes. Once write tools land, the `MCP_READ_ONLY` setting (see Configuration) will block
-them by default regardless of the calling user's permissions.
+Read tools cover parts, stock items/locations, part categories, purchase/sales/return/build orders
+(with line items and allocations), companies, contacts, addresses, manufacturer/supplier parts,
+BOM items, attachments, parameters, stock tracking history, test results, and project codes.
+
+Write support is intentionally narrow: `create_sales_order` and `create_sales_order_line` proxy
+the corresponding InvenTree REST API POST endpoints. The `MCP_READ_ONLY` setting remains enabled
+by default and hides/blocks these tools regardless of the calling user's permissions. When it is
+disabled, normal InvenTree role and OAuth2-scope checks still apply to every write.
 
 Each tool's `outputSchema` and filter/ordering options are derived live from InvenTree's own
 serializers and views (not hand-maintained), so they can't drift as InvenTree evolves. Call
