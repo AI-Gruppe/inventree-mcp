@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from mcp.server.mcpserver.exceptions import ToolError
+from rest_framework.viewsets import ViewSetMixin
 
 from .. import proxy
 from ..mcp_server import mcp
@@ -43,6 +44,12 @@ def _serializer_class(view_cls: type | None, action: str | None = None):
             return serializer_class
 
     return getattr(view_cls, "serializer_class", None)
+
+
+def _supports_collection_method(view_cls: type | None, method: str) -> bool:
+    if view_cls is None or issubclass(view_cls, ViewSetMixin):
+        return False
+    return hasattr(view_cls, method.lower())
 
 
 def _input_schema(
@@ -87,6 +94,18 @@ async def describe_resource(resource: str) -> dict:
     if spec.delete and detail_view is not None:
         operations["delete"] = {
             "allowed": await proxy.user_has_access(detail_view, "DELETE"),
+            "input_schema": {"type": "object", "additionalProperties": True},
+        }
+
+    if _supports_collection_method(list_view, "PATCH"):
+        operations["bulk_update"] = {
+            "allowed": await proxy.user_has_access(list_view, "PATCH"),
+            "input_schema": {"type": "object", "additionalProperties": True},
+        }
+
+    if _supports_collection_method(list_view, "DELETE"):
+        operations["bulk_delete"] = {
+            "allowed": await proxy.user_has_access(list_view, "DELETE"),
             "input_schema": {"type": "object", "additionalProperties": True},
         }
 
@@ -165,6 +184,38 @@ async def delete_resource(
         spec.detail_path.format(id=resource_id),
         data=data or {},
         pk=resource_id,
+    )
+
+
+@mcp.tool()
+async def bulk_update_resource(resource: str, data: dict[str, Any]) -> dict:
+    """Run a bulk PATCH on a resource whose InvenTree list view supports it."""
+    spec = _resource(resource)
+    view_cls = spec.list_loader()
+    if not _supports_collection_method(view_cls, "PATCH"):
+        raise ToolError(f"Resource {resource!r} does not support bulk updates")
+
+    return await proxy.call_view(
+        view_cls,
+        "PATCH",
+        spec.list_path,
+        data=data,
+    )
+
+
+@mcp.tool()
+async def bulk_delete_resource(resource: str, data: dict[str, Any]) -> dict:
+    """Run a bulk DELETE on a resource whose InvenTree list view supports it."""
+    spec = _resource(resource)
+    view_cls = spec.list_loader()
+    if not _supports_collection_method(view_cls, "DELETE"):
+        raise ToolError(f"Resource {resource!r} does not support bulk deletion")
+
+    return await proxy.call_view(
+        view_cls,
+        "DELETE",
+        spec.list_path,
+        data=data,
     )
 
 
