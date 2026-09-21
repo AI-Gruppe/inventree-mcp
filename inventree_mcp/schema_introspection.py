@@ -161,3 +161,48 @@ def paginated_schema(serializer_class: type[drf.Serializer]) -> dict[str, Any]:
         },
         "required": ["count", "next", "previous", "results"],
     }
+
+
+
+def writable_serializer_schema(
+    serializer_class: type[drf.Serializer],
+    *,
+    partial: bool = False,
+) -> dict[str, Any]:
+    """Build a JSON schema for writable serializer input fields.
+
+    Read-only fields are omitted. Required fields are included for create
+    operations, while partial-update schemas deliberately make every field
+    optional to match PATCH semantics.
+    """
+    try:
+        instance = serializer_class()
+    except TypeError:
+        return {"type": "object", "additionalProperties": True}
+
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+
+    for name, field in instance.fields.items():
+        if getattr(field, "read_only", False):
+            continue
+
+        properties[name] = _field_schema(field, 0)
+
+        if (
+            not partial
+            and getattr(field, "required", False)
+            and getattr(field, "default", drf.empty) is drf.empty
+        ):
+            required.append(name)
+
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": properties,
+        "additionalProperties": False,
+    }
+
+    if required:
+        schema["required"] = required
+
+    return schema
