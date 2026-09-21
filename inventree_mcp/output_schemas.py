@@ -131,6 +131,11 @@ _OUTPUT_SCHEMAS = {
     "get_stock_test_result": serializer_schema(StockItemTestResultSerializer),
     "list_project_codes": paginated_schema(ProjectCodeSerializer),
     "get_project_code": serializer_schema(ProjectCodeSerializer),
+    "describe_resource": {"type": "object"},
+    "create_resource": {"type": "object"},
+    "update_resource": {"type": "object"},
+    "delete_resource": {"type": "object"},
+    "invoke_action": {"type": "object"},
     "make_web_link": {
         "type": "object",
         "properties": {
