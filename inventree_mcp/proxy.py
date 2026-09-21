@@ -193,23 +193,17 @@ async def user_has_access(view_cls: type[APIView], method: str = "GET") -> bool:
     never the view's business logic, so it doesn't touch the database for
     real data and doesn't need a valid object id for detail views.
 
-    Deliberately checks the "GET" permission even for tools that end up
-    wrapping a different underlying view (list vs detail) - see
-    tool_visibility.py's module docstring for why a literal HTTP OPTIONS
-    request is the wrong tool for this: InvenTree's OAuth2 scope resolver
-    (map_scope() in InvenTree/permissions.py) hardcodes OPTIONS to a generic
-    "g:read" scope regardless of resource, while GET requires the real
-    resource-specific scope (e.g. "r:view:part") - an OPTIONS-based check
-    would show a tool as available to a narrowly-scoped OAuth2 token that
-    the real GET call would then reject. RolePermission (used by
-    token/basic auth) doesn't have this problem (it maps OPTIONS to "view",
-    same as GET) - but checking via "GET" is correct for both cases, not
-    just the one that would otherwise silently break.
+    Checks the same HTTP method the tool will execute (GET for reads, POST
+    for creates). This is intentionally not an OPTIONS check: InvenTree's
+    OAuth2 scope resolver maps OPTIONS to a generic scope, while the real
+    method requires the resource-specific read/write scope. Using the actual
+    method also makes RolePermission evaluate the correct view/add/change
+    permission for the operation being advertised.
 
     Args:
         view_cls: the view class to check (e.g. part.api.PartList).
-        method: the HTTP method whose permission to check - "GET" for every
-            tool that exists today (all read-only).
+        method: the HTTP method whose permission to check, matching the
+            operation the MCP tool will actually execute.
 
     Returns:
         True if the current user (and OAuth2 token, if applicable) has
