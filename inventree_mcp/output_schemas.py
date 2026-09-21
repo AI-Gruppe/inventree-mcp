@@ -135,6 +135,8 @@ _OUTPUT_SCHEMAS = {
     "create_resource": {"type": "object"},
     "update_resource": {"type": "object"},
     "delete_resource": {"type": "object"},
+    "bulk_update_resource": {"type": "object"},
+    "bulk_delete_resource": {"type": "object"},
     "invoke_action": {"type": "object"},
     "make_web_link": {
         "type": "object",
