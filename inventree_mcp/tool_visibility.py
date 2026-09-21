@@ -116,6 +116,8 @@ _MUTATION_DISPATCH_TOOLS = {
     "create_resource",
     "update_resource",
     "delete_resource",
+    "bulk_update_resource",
+    "bulk_delete_resource",
     "invoke_action",
 }
 
