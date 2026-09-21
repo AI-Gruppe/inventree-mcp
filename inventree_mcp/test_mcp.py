@@ -1347,6 +1347,8 @@ class ToolVisibilityTest(InvenTreeTestCase):
                 "create_resource",
                 "update_resource",
                 "delete_resource",
+                "bulk_update_resource",
+                "bulk_delete_resource",
                 "invoke_action",
                 "make_web_link",
             }
