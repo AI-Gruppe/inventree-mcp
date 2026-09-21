@@ -19,10 +19,23 @@ Read tools cover parts, stock items/locations, part categories, purchase/sales/r
 (with line items and allocations), companies, contacts, addresses, manufacturer/supplier parts,
 BOM items, attachments, parameters, stock tracking history, test results, and project codes.
 
-Write support is intentionally narrow: `create_sales_order` and `create_sales_order_line` proxy
-the corresponding InvenTree REST API POST endpoints. The `MCP_READ_ONLY` setting is disabled by default, so these tools are available to callers with
-the required InvenTree permissions. Enabling read-only mode hides and blocks all write tools.
-Normal InvenTree role and OAuth2-scope checks still apply to every write.
+Write support is registry-backed and broad. Use `describe_resource(resource)` to discover
+the create / PATCH-update / delete / bulk operations and domain actions available for a resource,
+including serializer-derived writable fields and caller-specific permission checks. Mutations are
+performed with `create_resource`, `update_resource`, `delete_resource`,
+`bulk_update_resource`, `bulk_delete_resource`, and `invoke_action`.
+
+The mutation registry covers operational InvenTree resources including parts/categories/BOMs,
+stock and locations, companies and catalog parts, purchase/sales/return/transfer orders and their
+lines, shipments/allocations, build orders, parameters, attachments, notes, project codes, tags,
+price breaks and related resources. Domain actions cover order lifecycle transitions and
+receive/allocate/ship flows, stock adjustments/transfers/serialization, build allocation/consume/
+output workflows, and BOM validation/copy operations. Authentication / OAuth application
+administration endpoints are deliberately not exposed through this mutation registry.
+
+`MCP_READ_ONLY` is disabled by default. Enabling it hides and blocks all mutation tools.
+Normal InvenTree role and OAuth2-scope checks still apply to every mutation because every call is
+dispatched through InvenTree's real DRF view.
 
 Each tool's `outputSchema` and filter/ordering options are derived live from InvenTree's own
 serializers and views (not hand-maintained), so they can't drift as InvenTree evolves. Call
