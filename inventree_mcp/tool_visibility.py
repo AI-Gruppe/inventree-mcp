@@ -1,36 +1,16 @@
 """Filter tools/list results down to what the current caller can actually use.
 
-Every tool is always *registered* (so its schema/description stays a single
-source of truth - see output_schemas.py) - but a caller without the
-underlying API endpoint's permission would only ever get a ToolError from
-actually calling it. This makes a real tools/list request reflect that up
-front: a tool is only listed if the current user (and, for OAuth2 requests,
-their token's scope) can really reach the resource it wraps - determined by
-running the *real* permission check via proxy.user_has_access() (RolePermission
-/ OAuth2 scope, the same InvenTree.permissions machinery call_view() itself
-relies on), not a hand-rolled guess.
+Every tool remains registered, but tools/list only advertises tools whose
+underlying InvenTree API permission check succeeds for the method the tool
+actually executes. Read tools are checked with GET; write tools are checked
+with POST and are additionally hidden while MCP_READ_ONLY is enabled.
 
-This is a discovery-time convenience, not a new security boundary:
-proxy.call_view() remains the only real enforcement point, and still runs in
-full for every actual tool call regardless of what tools/list showed - a
-client that calls a "hidden" tool by name gets exactly the same ToolError it
-always did (see MCPServer.call_tool()'s own tool lookup, which never
-consults this module). Don't rely on this module to prevent access to
-anything; it only prevents *advertising* access that doesn't exist.
-
-Why a real permission check via "GET" rather than a literal HTTP OPTIONS
-request (the obvious-looking shortcut): InvenTree's OAuth2 scope resolver
-(map_scope() in InvenTree/permissions.py) hardcodes OPTIONS to a generic
-"g:read" scope for every view regardless of resource, while GET requires the
-real resource-specific scope (e.g. "r:view:part"). An OPTIONS-based check
-would show a tool as available to an OAuth2 token scoped down to "g:read"
-only, even though the real GET call that tool actually makes would then be
-rejected - silently defeating the exact "narrow a token below the user's
-role" scenario this plugin exists to support correctly. Checking "GET"
-instead sidesteps that gap entirely (and is also correct for the
-role/RolePermission path, which maps OPTIONS and GET to the same "view"
-permission anyway - see proxy.user_has_access()'s docstring for the full
-comparison).
+This is discovery-time convenience, not the security boundary:
+proxy.call_view() still performs the real authenticated API dispatch and
+enforces MCP_READ_ONLY on every tool invocation, even if a client calls a
+hidden tool by name. Permission discovery deliberately uses the actual HTTP
+method rather than OPTIONS so InvenTree's RolePermission and OAuth2 scope
+mapping evaluate the same resource-specific permission as the eventual call.
 """
 
 from __future__ import annotations
