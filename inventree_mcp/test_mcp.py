@@ -1338,7 +1338,15 @@ class ToolVisibilityTest(InvenTreeTestCase):
             # definitions, make_web_link only builds a URL string - neither
             # touches the database in a way any RolePermission/RuleSet check
             # applies to.
-            - {"describe_filters", "make_web_link"}
+            - {
+                "describe_filters",
+                "describe_resource",
+                "create_resource",
+                "update_resource",
+                "delete_resource",
+                "invoke_action",
+                "make_web_link",
+            }
         )
 
         self.assertEqual(unmapped, set())
