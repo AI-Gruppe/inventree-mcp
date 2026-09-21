@@ -20,7 +20,7 @@ from .tools.sales_orders import create_sales_order, create_sales_order_line
 
 @override_settings(PLUGIN_TESTING_SETUP=True)
 class MCPWriteToolTest(InvenTreeTestCase):
-    """Verify sales-order writes remain explicit, permission-safe, and opt-in."""
+    """Verify sales-order writes remain explicit and permission-safe."""
 
     roles: ClassVar[list[str]] = ["sales_order.view"]
 
@@ -48,14 +48,14 @@ class MCPWriteToolTest(InvenTreeTestCase):
         context.set_current_user(user)
         self.addCleanup(context.set_current_user, None)
 
-    async def _disable_read_only(self):
-        def _disable():
+    async def _set_read_only(self, enabled: bool):
+        def _set():
             plugin = registry.get_plugin("inventree-mcp")
-            plugin.set_setting("MCP_READ_ONLY", False)
+            plugin.set_setting("MCP_READ_ONLY", enabled)
             return plugin
 
-        plugin = await sync_to_async(_disable)()
-        self.addCleanup(plugin.set_setting, "MCP_READ_ONLY", True)
+        plugin = await sync_to_async(_set)()
+        self.addCleanup(plugin.set_setting, "MCP_READ_ONLY", False)
 
     async def _grant_add_role(self):
         await sync_to_async(self.assignRole)(
@@ -63,6 +63,7 @@ class MCPWriteToolTest(InvenTreeTestCase):
         )
 
     async def test_write_tools_are_blocked_in_read_only_mode(self):
+        await self._set_read_only(True)
         self._as(self.user)
 
         with self.assertRaises(ToolError) as cm:
@@ -75,7 +76,6 @@ class MCPWriteToolTest(InvenTreeTestCase):
 
     async def test_authorized_user_can_create_order_and_line(self):
         await self._grant_add_role()
-        await self._disable_read_only()
         self._as(self.user)
 
         order = await create_sales_order(
