@@ -80,6 +80,12 @@ RESOURCES: dict[str, ResourceSpec] = {
         _view_any("order.api", ["PurchaseOrderLineItemViewSet", "PurchaseOrderLineItemDetail"]),
         "/api/order/po-line/", "/api/order/po-line/{id}/",
     ),
+    "purchase_order_extra_line": ResourceSpec(
+        "purchase_order_extra_line",
+        _view("order.api", "PurchaseOrderExtraLineViewSet"),
+        _view("order.api", "PurchaseOrderExtraLineViewSet"),
+        "/api/order/po-extra-line/", "/api/order/po-extra-line/{id}/",
+    ),
     "sales_order": ResourceSpec(
         "sales_order", _view("order.api", "SalesOrderList"), _view("order.api", "SalesOrderDetail"),
         "/api/order/so/", "/api/order/so/{id}/",
@@ -87,6 +93,10 @@ RESOURCES: dict[str, ResourceSpec] = {
     "sales_order_line": ResourceSpec(
         "sales_order_line", _view("order.api", "SalesOrderLineItemList"), _view("order.api", "SalesOrderLineItemDetail"),
         "/api/order/so-line/", "/api/order/so-line/{id}/",
+    ),
+    "sales_order_extra_line": ResourceSpec(
+        "sales_order_extra_line", _view("order.api", "SalesOrderExtraLineList"), _view("order.api", "SalesOrderExtraLineDetail"),
+        "/api/order/so-extra-line/", "/api/order/so-extra-line/{id}/",
     ),
     "sales_order_allocation": ResourceSpec(
         "sales_order_allocation", _view("order.api", "SalesOrderAllocationList"), _view("order.api", "SalesOrderAllocationDetail"),
@@ -96,6 +106,10 @@ RESOURCES: dict[str, ResourceSpec] = {
     "sales_order_shipment": ResourceSpec(
         "sales_order_shipment", _view("order.api", "SalesOrderShipmentList"), _view("order.api", "SalesOrderShipmentDetail"),
         "/api/order/so-shipment/", "/api/order/so-shipment/{id}/",
+    ),
+    "return_order_extra_line": ResourceSpec(
+        "return_order_extra_line", _view("order.api", "ReturnOrderExtraLineList"), _view("order.api", "ReturnOrderExtraLineDetail"),
+        "/api/order/return-order-extra-line/", "/api/order/return-order-extra-line/{id}/",
     ),
     "return_order": ResourceSpec(
         "return_order", _view("order.api", "ReturnOrderList"), _view("order.api", "ReturnOrderDetail"),
@@ -162,6 +176,22 @@ RESOURCES: dict[str, ResourceSpec] = {
     "bom_substitute": ResourceSpec(
         "bom_substitute", _view("part.api", "BomItemSubstituteList"), _view("part.api", "BomItemSubstituteDetail"),
         "/api/bom/substitute/", "/api/bom/substitute/{id}/",
+    ),
+    "category_parameter": ResourceSpec(
+        "category_parameter", _view("part.api", "CategoryParameterList"), _view("part.api", "CategoryParameterDetail"),
+        "/api/part/category/parameter/", "/api/part/category/parameter/{id}/",
+    ),
+    "part_sale_price": ResourceSpec(
+        "part_sale_price", _view("part.api", "PartSalePriceList"), _view("part.api", "PartSalePriceDetail"),
+        "/api/part/price/sale/", "/api/part/price/sale/{id}/",
+    ),
+    "part_internal_price": ResourceSpec(
+        "part_internal_price", _view("part.api", "PartInternalPriceList"), _view("part.api", "PartInternalPriceDetail"),
+        "/api/part/price/internal/", "/api/part/price/internal/{id}/",
+    ),
+    "part_stocktake": ResourceSpec(
+        "part_stocktake", _view("part.api", "PartStocktakeList"), _view("part.api", "PartStocktakeDetail"),
+        "/api/part/stocktake/", "/api/part/stocktake/{id}/",
     ),
     "part_test_template": ResourceSpec(
         "part_test_template", _view("part.api", "PartTestTemplateList"), _view("part.api", "PartTestTemplateDetail"),
