@@ -188,7 +188,7 @@ async def delete_resource(
 
 
 @mcp.tool()
-async def bulk_update_resource(resource: str, data: dict[str, Any]) -> dict:
+async def bulk_update_resource(resource: str, data: dict[str, Any]) -> Any:
     """Run a bulk PATCH on a resource whose InvenTree list view supports it."""
     spec = _resource(resource)
     view_cls = spec.list_loader()
@@ -204,7 +204,7 @@ async def bulk_update_resource(resource: str, data: dict[str, Any]) -> dict:
 
 
 @mcp.tool()
-async def bulk_delete_resource(resource: str, data: dict[str, Any]) -> dict:
+async def bulk_delete_resource(resource: str, data: dict[str, Any]) -> Any:
     """Run a bulk DELETE on a resource whose InvenTree list view supports it."""
     spec = _resource(resource)
     view_cls = spec.list_loader()
@@ -224,7 +224,7 @@ async def invoke_action(
     action: str,
     resource_id: int | None = None,
     data: dict[str, Any] | None = None,
-) -> dict:
+) -> Any:
     """Run an allowlisted InvenTree domain action.
 
     Examples include issuing or receiving orders, allocating stock, shipping
