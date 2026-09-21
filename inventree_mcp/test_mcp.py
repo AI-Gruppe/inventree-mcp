@@ -610,17 +610,25 @@ class MCPToolPermissionTest(InvenTreeTestCase):
         result = await list_parts(filters={"limit": 10_000})
         self.assertLessEqual(len(result["results"]), 100)
 
-    async def test_read_only_setting_blocks_writes_by_default(self):
-        """Even a fully-permissioned user cannot write while MCP_READ_ONLY is on (the default)."""
+    async def test_read_only_setting_blocks_writes_when_enabled(self):
+        """Enabling MCP_READ_ONLY blocks writes regardless of user permissions."""
         self._as(self.user)
+
+        def _enable_read_only():
+            plugin = registry.get_plugin("inventree-mcp")
+            plugin.set_setting("MCP_READ_ONLY", True)
+            return plugin
+
+        plugin = await sync_to_async(_enable_read_only)()
+        self.addCleanup(plugin.set_setting, "MCP_READ_ONLY", False)
 
         with self.assertRaises(ToolError) as cm:
             await call_view(PartList, "POST", "/api/part/", data={})
 
         self.assertIn("read-only", str(cm.exception).lower())
 
-    async def test_read_only_setting_can_be_disabled(self):
-        """Disabling MCP_READ_ONLY lets a write reach the real view (and its own validation)."""
+    async def test_writable_default_reaches_real_view_validation(self):
+        """With MCP_READ_ONLY disabled, writes reach the real view and its validation."""
         self._as(self.user)
 
         def _disable_read_only():
@@ -628,10 +636,8 @@ class MCPToolPermissionTest(InvenTreeTestCase):
             plugin.set_setting("MCP_READ_ONLY", False)
             return plugin
 
-        # registry/setting lookups are sync Django ORM work - must be bridged
-        # the same way proxy.call_view() bridges tool calls (see AGENTS.md).
         plugin = await sync_to_async(_disable_read_only)()
-        self.addCleanup(plugin.set_setting, "MCP_READ_ONLY", True)
+        self.addCleanup(plugin.set_setting, "MCP_READ_ONLY", False)
 
         with self.assertRaises(ToolError) as cm:
             await call_view(PartList, "POST", "/api/part/", data={})
