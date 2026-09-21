@@ -20,9 +20,9 @@ Read tools cover parts, stock items/locations, part categories, purchase/sales/r
 BOM items, attachments, parameters, stock tracking history, test results, and project codes.
 
 Write support is intentionally narrow: `create_sales_order` and `create_sales_order_line` proxy
-the corresponding InvenTree REST API POST endpoints. The `MCP_READ_ONLY` setting remains enabled
-by default and hides/blocks these tools regardless of the calling user's permissions. When it is
-disabled, normal InvenTree role and OAuth2-scope checks still apply to every write.
+the corresponding InvenTree REST API POST endpoints. The `MCP_READ_ONLY` setting is disabled by default, so these tools are available to callers with
+the required InvenTree permissions. Enabling read-only mode hides and blocks all write tools.
+Normal InvenTree role and OAuth2-scope checks still apply to every write.
 
 Each tool's `outputSchema` and filter/ordering options are derived live from InvenTree's own
 serializers and views (not hand-maintained), so they can't drift as InvenTree evolves. Call
@@ -108,8 +108,8 @@ Under **Settings > Plugin Settings**:
 
 - **Require Authentication** (`REQUIRE_AUTH`, default `True`): reject unauthenticated requests.
   Only disable for local testing.
-- **Read Only** (`MCP_READ_ONLY`, default `True`): block all write actions via MCP, regardless of
-  the calling user's permissions. A plugin-wide kill switch, independent of per-user roles.
+- **Read Only** (`MCP_READ_ONLY`, default `False`): when enabled, block all write actions via MCP,
+  regardless of the calling user's permissions. A plugin-wide kill switch, independent of per-user roles.
 
 ## Authentication
 
