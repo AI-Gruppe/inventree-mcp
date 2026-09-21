@@ -23,7 +23,7 @@ from asgiref.sync import sync_to_async
 from mcp.types import ListToolsResult, PaginatedRequestParams
 
 from . import proxy
-from .context import has_bound_identity
+from .context import has_bound_identity, has_current_user
 from .mcp_server import mcp
 from .settings import get_plugin_setting
 from .tools.discovery import RESOURCE_LOADERS
@@ -108,6 +108,17 @@ _TOOL_METHODS: dict[str, str] = {
     "create_sales_order_line": "POST",
 }
 
+# These mutation tools dispatch to a registry-selected resource/action based on
+# their arguments, so they cannot be permission-filtered to one resource at
+# tools/list time. They are advertised only to authenticated callers; the
+# selected InvenTree view performs the real permission check at execution.
+_MUTATION_DISPATCH_TOOLS = {
+    "create_resource",
+    "update_resource",
+    "delete_resource",
+    "invoke_action",
+}
+
 
 async def visible_tool_names(names: Iterable[str]) -> set[str]:
     """Return the subset of *names* the current bound user can actually call.
@@ -140,6 +151,11 @@ async def visible_tool_names(names: Iterable[str]) -> set[str]:
     read_only = await sync_to_async(get_plugin_setting)("MCP_READ_ONLY")
 
     for name in names:
+        if name in _MUTATION_DISPATCH_TOOLS:
+            if has_current_user() and not read_only:
+                visible.add(name)
+            continue
+
         resource = _TOOL_RESOURCES.get(name)
         if resource is None:
             visible.add(name)
