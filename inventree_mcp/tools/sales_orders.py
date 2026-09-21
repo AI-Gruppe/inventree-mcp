@@ -10,6 +10,127 @@ from ..view_resolution import resolve_view
 from ._common import build_query_params
 
 
+def _without_none(**values: Any) -> dict[str, Any]:
+    """Return only explicitly supplied values for a write request."""
+    return {key: value for key, value in values.items() if value is not None}
+
+
+@mcp.tool()
+async def create_sales_order(
+    reference: str,
+    customer: int,
+    description: str | None = None,
+    customer_reference: str | None = None,
+    start_date: str | None = None,
+    target_date: str | None = None,
+    project_code: int | None = None,
+    responsible: int | None = None,
+    contact: int | None = None,
+    address: int | None = None,
+    order_currency: str | None = None,
+) -> dict:
+    """Create a sales order through InvenTree's real REST API.
+
+    This tool is only usable when the plugin-wide MCP_READ_ONLY setting is
+    disabled and the calling InvenTree user has permission to add sales
+    orders. InvenTree performs the same serializer validation as a normal
+    POST to /api/order/so/.
+
+    Args:
+        reference: Sales-order reference, following the instance's configured
+            reference pattern.
+        customer: Customer Company ID.
+        description: Optional order description.
+        customer_reference: Optional customer-side reference.
+        start_date: Optional ISO date (YYYY-MM-DD).
+        target_date: Optional ISO date (YYYY-MM-DD).
+        project_code: Optional ProjectCode ID.
+        responsible: Optional Owner ID.
+        contact: Optional Contact ID.
+        address: Optional Address ID.
+        order_currency: Optional ISO currency code such as EUR.
+
+    Raises:
+        ToolError: read-only mode is enabled, the caller lacks permission, or
+            InvenTree rejects the supplied data.
+    """
+    data = _without_none(
+        reference=reference,
+        customer=customer,
+        description=description,
+        customer_reference=customer_reference,
+        start_date=start_date,
+        target_date=target_date,
+        project_code=project_code,
+        responsible=responsible,
+        contact=contact,
+        address=address,
+        order_currency=order_currency,
+    )
+
+    return await call_view(
+        resolve_view("order.api", "SalesOrderList"),
+        "POST",
+        "/api/order/so/",
+        data=data,
+    )
+
+
+@mcp.tool()
+async def create_sales_order_line(
+    order: int,
+    part: int,
+    quantity: float,
+    reference: str | None = None,
+    notes: str | None = None,
+    target_date: str | None = None,
+    project_code: int | None = None,
+    sale_price: float | None = None,
+    sale_price_currency: str | None = None,
+    discount: float | None = None,
+) -> dict:
+    """Add a line item to an existing sales order.
+
+    This uses InvenTree's SalesOrderLineItemList POST endpoint, so normal
+    model validation and the caller's InvenTree permissions remain in force.
+
+    Args:
+        order: SalesOrder ID.
+        part: Part ID.
+        quantity: Quantity to order.
+        reference: Optional line reference.
+        notes: Optional free-form line notes.
+        target_date: Optional ISO date (YYYY-MM-DD).
+        project_code: Optional ProjectCode ID.
+        sale_price: Optional per-unit sale price.
+        sale_price_currency: Optional ISO currency code for sale_price.
+        discount: Optional discount value accepted by the InvenTree serializer.
+
+    Raises:
+        ToolError: read-only mode is enabled, the caller lacks permission, or
+            InvenTree rejects the supplied data.
+    """
+    data = _without_none(
+        order=order,
+        part=part,
+        quantity=quantity,
+        reference=reference,
+        notes=notes,
+        target_date=target_date,
+        project_code=project_code,
+        sale_price=sale_price,
+        sale_price_currency=sale_price_currency,
+        discount=discount,
+    )
+
+    return await call_view(
+        resolve_view("order.api", "SalesOrderLineItemList"),
+        "POST",
+        "/api/order/so-line/",
+        data=data,
+    )
+
+
 @mcp.tool()
 async def list_sales_orders(
     customer: int | None = None,
