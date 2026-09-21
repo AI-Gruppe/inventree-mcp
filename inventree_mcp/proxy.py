@@ -98,6 +98,10 @@ def _call_view_sync(
         request = factory_method(path, data=data or {}, format="json")
 
     actions = _viewset_actions(view_cls, method, view_kwargs, viewset_action)
+    action_kwargs: dict[str, Any] = {}
+    if viewset_action is not None and issubclass(view_cls, ViewSetMixin):
+        action_fn = getattr(view_cls, viewset_action, None)
+        action_kwargs = dict(getattr(action_fn, "kwargs", {}) or {})
 
     if oauth2_token is not None:
         # The MCP request itself was OAuth2-authenticated: make the proxied
@@ -111,13 +115,20 @@ def _call_view_sync(
         scoped_cls = scoped_view_class(view_cls)
         auth_classes = authentication_classes_for(user, oauth2_token)
         view = (
-            scoped_cls.as_view(actions, authentication_classes=auth_classes)
+            scoped_cls.as_view(
+                actions,
+                **{**action_kwargs, "authentication_classes": auth_classes},
+            )
             if actions is not None
             else scoped_cls.as_view(authentication_classes=auth_classes)
         )
     else:
         force_authenticate(request, user=user)
-        view = view_cls.as_view(actions) if actions is not None else view_cls.as_view()
+        view = (
+            view_cls.as_view(actions, **action_kwargs)
+            if actions is not None
+            else view_cls.as_view()
+        )
 
     response = view(request, **view_kwargs)
     response.render()
