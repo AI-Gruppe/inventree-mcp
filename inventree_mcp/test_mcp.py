@@ -1286,7 +1286,7 @@ class ToolVisibilityTest(InvenTreeTestCase):
         REQUIRE_AUTH disabled and no credentials sent) is a real caller, not
         "no request" - unlike the unfiltered case above, it must be filtered
         down to only the tools with no underlying view at all
-        (describe_filters). Even the tools that need no specific *role*
+        (describe_filters / describe_resource metadata). Even the tools that need no specific *role*
         (list_attachments, list_parameters, list_project_codes, ...) still
         require *some* authenticated user via call_view(), so an
         unauthenticated identity must not see them either - regression test
@@ -1299,7 +1299,10 @@ class ToolVisibilityTest(InvenTreeTestCase):
             tool.name for tool in await mcp.list_tools()
         )
 
-        self.assertEqual(names, {"describe_filters", "make_web_link"})
+        self.assertEqual(
+            names,
+            {"describe_filters", "describe_resource", "make_web_link"},
+        )
 
     async def test_unavailable_resource_hides_its_tools_without_crashing(self):
         """A resource whose loader can't resolve its view class (e.g. a
