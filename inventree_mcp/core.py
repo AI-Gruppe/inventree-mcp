@@ -41,7 +41,7 @@ class InvenTreeMCP(WellKnownMixin, SettingsMixin, UrlsMixin, InvenTreePlugin):
             "name": "Read Only",
             "description": "Block all write actions via the MCP endpoint, regardless of the calling user's permissions.",
             "validator": bool,
-            "default": True,
+            "default": False,
         },
         "MCP_LOG_TOOL_CALLS": {
             "name": "Log Tool Calls",
