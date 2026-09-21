@@ -38,11 +38,14 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from asgiref.sync import sync_to_async
+
 from mcp.types import ListToolsResult, PaginatedRequestParams
 
 from . import proxy
 from .context import has_bound_identity
 from .mcp_server import mcp
+from .settings import get_plugin_setting
 from .tools.discovery import RESOURCE_LOADERS
 
 if TYPE_CHECKING:
@@ -74,8 +77,10 @@ _TOOL_RESOURCES: dict[str, str] = {
     "get_purchase_order_line": "purchase_order_line",
     "list_sales_orders": "sales_order",
     "get_sales_order": "sales_order",
+    "create_sales_order": "sales_order",
     "list_sales_order_lines": "sales_order_line",
     "get_sales_order_line": "sales_order_line",
+    "create_sales_order_line": "sales_order_line",
     "list_sales_order_allocations": "sales_order_allocation",
     "get_sales_order_allocation": "sales_order_allocation",
     "list_build_orders": "build_order",
@@ -116,6 +121,13 @@ _TOOL_RESOURCES: dict[str, str] = {
     "get_project_code": "project_code",
 }
 
+# Most tools are reads. Write tools explicitly declare the HTTP method whose
+# real InvenTree permission check must succeed before they are advertised.
+_TOOL_METHODS: dict[str, str] = {
+    "create_sales_order": "POST",
+    "create_sales_order_line": "POST",
+}
+
 
 async def visible_tool_names(names: Iterable[str]) -> set[str]:
     """Return the subset of *names* the current bound user can actually call.
@@ -144,7 +156,8 @@ async def visible_tool_names(names: Iterable[str]) -> set[str]:
         return set(names)
 
     visible: set[str] = set()
-    resource_access: dict[str, bool] = {}
+    resource_access: dict[tuple[str, str], bool] = {}
+    read_only = await sync_to_async(get_plugin_setting)("MCP_READ_ONLY")
 
     for name in names:
         resource = _TOOL_RESOURCES.get(name)
@@ -152,13 +165,18 @@ async def visible_tool_names(names: Iterable[str]) -> set[str]:
             visible.add(name)
             continue
 
-        if resource not in resource_access:
+        method = _TOOL_METHODS.get(name, "GET")
+        if method != "GET" and read_only:
+            continue
+
+        access_key = (resource, method)
+        if access_key not in resource_access:
             view_cls = RESOURCE_LOADERS[resource]()
-            resource_access[resource] = view_cls is not None and (
-                await proxy.user_has_access(view_cls, "GET")
+            resource_access[access_key] = view_cls is not None and (
+                await proxy.user_has_access(view_cls, method)
             )
 
-        if resource_access[resource]:
+        if resource_access[access_key]:
             visible.add(name)
 
     return visible
