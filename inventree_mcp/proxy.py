@@ -25,8 +25,13 @@ from .settings import get_plugin_setting
 
 _factory = APIRequestFactory()
 
-# HTTP method -> ViewSet action, for the case where a pk *is* present
-# (GET/'retrieve' is the odd one out - see _viewset_actions()).
+# HTTP method -> ViewSet action mappings. Collection routes (no pk) support
+# list/create; detail routes (pk present) support retrieve/update/delete.
+_COLLECTION_ACTIONS = {
+    "GET": "list",
+    "POST": "create",
+}
+
 _DETAIL_ACTIONS = {
     "GET": "retrieve",
     "PUT": "update",
@@ -43,21 +48,19 @@ def _viewset_actions(
     InvenTree core is gradually converting some endpoints (PurchaseOrder so
     far) from separate List/Detail generic views to a single combined
     ViewSet class serving both routes - unlike a plain generic view,
-    ViewSet.as_view() can't infer 'list' vs 'retrieve' from the request
-    itself and raises TypeError without an explicit method->action mapping
-    (see rest_framework.viewsets.ViewSetMixin.as_view). A bare
-    view_kwargs['pk'] is what distinguishes a detail call from a list call
-    for every tool in tools/*.py, matching how the URL a real router would
-    generate carries a pk only for detail routes.
+    ViewSet.as_view() can't infer the action from the request itself and
+    raises TypeError without an explicit method->action mapping (see
+    rest_framework.viewsets.ViewSetMixin.as_view). A bare view_kwargs['pk']
+    distinguishes detail calls (retrieve/update/destroy) from collection
+    calls (list/create), matching how the URL a real router would generate
+    carries a pk only for detail routes.
     """
     if not issubclass(view_cls, ViewSetMixin):
         return None
 
     method = method.upper()
-    if method == "GET" and "pk" not in view_kwargs:
-        action = "list"
-    else:
-        action = _DETAIL_ACTIONS[method]
+    actions = _DETAIL_ACTIONS if "pk" in view_kwargs else _COLLECTION_ACTIONS
+    action = actions[method]
     return {method.lower(): action}
 
 
