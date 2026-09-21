@@ -29,13 +29,19 @@ mcp = MCPServer(
         "MCP server for querying InvenTree inventory management data - "
         "parts, stock, purchase/sales/return orders, build orders, "
         "companies (suppliers/customers/manufacturers) and their catalog "
-        "parts, BOMs, attachments, and more. Every tool here only reads "
-        "data (no create/update/delete tools exist yet). "
+        "parts, BOMs, attachments, and more. Registered resources can be "
+        "created, partially updated and deleted, and InvenTree workflow "
+        "actions (orders, stock, builds and BOMs) are available through "
+        "the mutation tools when write access is enabled. "
         "Tools follow a list_X/get_X pattern per resource (e.g. "
         "list_parts/get_part). To find out more about a resource beyond "
         "its tools' named arguments - available search fields, sort "
         "fields, extra filters, and optional fields you can inline to save "
-        "a round trip - call describe_filters(resource) first. "
+        "a round trip - call describe_filters(resource) first. For writes, "
+        "call describe_resource(resource) to discover allowed CRUD operations, "
+        "domain actions and serializer-derived writable fields, then use "
+        "create_resource/update_resource/delete_resource, bulk mutation tools, "
+        "or invoke_action. "
         "When your response mentions a specific record that has a "
         "standalone web UI page (e.g. a part, build order, purchase order, "
         "stock item, or company - see make_web_link's docstring for the "
@@ -57,6 +63,7 @@ from .tools import (  # noqa: F401
     companies,
     discovery,
     locations,
+    mutations,
     parameters,
     parts,
     project_codes,

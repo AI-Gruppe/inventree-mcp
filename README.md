@@ -15,11 +15,27 @@ Every tool is a thin wrapper around InvenTree's own REST API view classes (see
 requests go through exactly the same permission checks, filtering, and serialization as the regular
 REST API. Tool code never queries the Django ORM directly.
 
-Currently read-only, covering parts, stock items/locations, part categories, purchase/sales/return/
-build orders (with line items and allocations), companies, contacts, addresses, manufacturer/
-supplier parts, BOM items, attachments, parameters, stock tracking history, test results, and
-project codes. Once write tools land, the `MCP_READ_ONLY` setting (see Configuration) will block
-them by default regardless of the calling user's permissions.
+Read tools cover parts, stock items/locations, part categories, purchase/sales/return/build orders
+(with line items and allocations), companies, contacts, addresses, manufacturer/supplier parts,
+BOM items, attachments, parameters, stock tracking history, test results, and project codes.
+
+Write support is registry-backed and broad. Use `describe_resource(resource)` to discover
+the create / PATCH-update / delete / bulk operations and domain actions available for a resource,
+including serializer-derived writable fields and caller-specific permission checks. Mutations are
+performed with `create_resource`, `update_resource`, `delete_resource`,
+`bulk_update_resource`, `bulk_delete_resource`, and `invoke_action`.
+
+The mutation registry covers operational InvenTree resources including parts/categories/BOMs,
+stock and locations, companies and catalog parts, purchase/sales/return/transfer orders and their
+lines, shipments/allocations, build orders, parameters, attachments, notes, project codes, tags,
+price breaks and related resources. Domain actions cover order lifecycle transitions and
+receive/allocate/ship flows, stock adjustments/transfers/serialization, build allocation/consume/
+output workflows, and BOM validation/copy operations. Authentication / OAuth application
+administration endpoints are deliberately not exposed through this mutation registry.
+
+`MCP_READ_ONLY` is disabled by default. Enabling it hides and blocks all mutation tools.
+Normal InvenTree role and OAuth2-scope checks still apply to every mutation because every call is
+dispatched through InvenTree's real DRF view.
 
 Each tool's `outputSchema` and filter/ordering options are derived live from InvenTree's own
 serializers and views (not hand-maintained), so they can't drift as InvenTree evolves. Call
@@ -105,8 +121,8 @@ Under **Settings > Plugin Settings**:
 
 - **Require Authentication** (`REQUIRE_AUTH`, default `True`): reject unauthenticated requests.
   Only disable for local testing.
-- **Read Only** (`MCP_READ_ONLY`, default `True`): block all write actions via MCP, regardless of
-  the calling user's permissions. A plugin-wide kill switch, independent of per-user roles.
+- **Read Only** (`MCP_READ_ONLY`, default `False`): when enabled, block all write actions via MCP,
+  regardless of the calling user's permissions. A plugin-wide kill switch, independent of per-user roles.
 
 ## Authentication
 

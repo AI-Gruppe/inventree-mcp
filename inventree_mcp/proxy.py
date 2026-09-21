@@ -25,8 +25,13 @@ from .settings import get_plugin_setting
 
 _factory = APIRequestFactory()
 
-# HTTP method -> ViewSet action, for the case where a pk *is* present
-# (GET/'retrieve' is the odd one out - see _viewset_actions()).
+# HTTP method -> ViewSet action mappings. Collection routes (no pk) support
+# list/create; detail routes (pk present) support retrieve/update/delete.
+_COLLECTION_ACTIONS = {
+    "GET": "list",
+    "POST": "create",
+}
+
 _DETAIL_ACTIONS = {
     "GET": "retrieve",
     "PUT": "update",
@@ -36,28 +41,32 @@ _DETAIL_ACTIONS = {
 
 
 def _viewset_actions(
-    view_cls: type[APIView], method: str, view_kwargs: dict[str, Any]
+    view_cls: type[APIView],
+    method: str,
+    view_kwargs: dict[str, Any],
+    viewset_action: str | None = None,
 ) -> dict[str, str] | None:
     """Build the `actions` mapping DRF ViewSet.as_view() requires, or None for a plain view.
 
     InvenTree core is gradually converting some endpoints (PurchaseOrder so
     far) from separate List/Detail generic views to a single combined
     ViewSet class serving both routes - unlike a plain generic view,
-    ViewSet.as_view() can't infer 'list' vs 'retrieve' from the request
-    itself and raises TypeError without an explicit method->action mapping
-    (see rest_framework.viewsets.ViewSetMixin.as_view). A bare
-    view_kwargs['pk'] is what distinguishes a detail call from a list call
-    for every tool in tools/*.py, matching how the URL a real router would
-    generate carries a pk only for detail routes.
+    ViewSet.as_view() can't infer the action from the request itself and
+    raises TypeError without an explicit method->action mapping (see
+    rest_framework.viewsets.ViewSetMixin.as_view). A bare view_kwargs['pk']
+    distinguishes detail calls (retrieve/update/destroy) from collection
+    calls (list/create), matching how the URL a real router would generate
+    carries a pk only for detail routes.
     """
     if not issubclass(view_cls, ViewSetMixin):
         return None
 
     method = method.upper()
-    if method == "GET" and "pk" not in view_kwargs:
-        action = "list"
-    else:
-        action = _DETAIL_ACTIONS[method]
+    if viewset_action is not None:
+        return {method.lower(): viewset_action}
+
+    actions = _DETAIL_ACTIONS if "pk" in view_kwargs else _COLLECTION_ACTIONS
+    action = actions[method]
     return {method.lower(): action}
 
 
@@ -68,6 +77,7 @@ def _call_view_sync(
     *,
     query_params: dict[str, Any] | None = None,
     data: dict[str, Any] | None = None,
+    viewset_action: str | None = None,
     **view_kwargs: Any,
 ) -> Any:
     user = get_current_user()
@@ -87,7 +97,11 @@ def _call_view_sync(
     else:
         request = factory_method(path, data=data or {}, format="json")
 
-    actions = _viewset_actions(view_cls, method, view_kwargs)
+    actions = _viewset_actions(view_cls, method, view_kwargs, viewset_action)
+    action_kwargs: dict[str, Any] = {}
+    if viewset_action is not None and issubclass(view_cls, ViewSetMixin):
+        action_fn = getattr(view_cls, viewset_action, None)
+        action_kwargs = dict(getattr(action_fn, "kwargs", {}) or {})
 
     if oauth2_token is not None:
         # The MCP request itself was OAuth2-authenticated: make the proxied
@@ -101,13 +115,20 @@ def _call_view_sync(
         scoped_cls = scoped_view_class(view_cls)
         auth_classes = authentication_classes_for(user, oauth2_token)
         view = (
-            scoped_cls.as_view(actions, authentication_classes=auth_classes)
+            scoped_cls.as_view(
+                actions,
+                **{**action_kwargs, "authentication_classes": auth_classes},
+            )
             if actions is not None
             else scoped_cls.as_view(authentication_classes=auth_classes)
         )
     else:
         force_authenticate(request, user=user)
-        view = view_cls.as_view(actions) if actions is not None else view_cls.as_view()
+        view = (
+            view_cls.as_view(actions, **action_kwargs)
+            if actions is not None
+            else view_cls.as_view()
+        )
 
     response = view(request, **view_kwargs)
     response.render()
@@ -190,23 +211,17 @@ async def user_has_access(view_cls: type[APIView], method: str = "GET") -> bool:
     never the view's business logic, so it doesn't touch the database for
     real data and doesn't need a valid object id for detail views.
 
-    Deliberately checks the "GET" permission even for tools that end up
-    wrapping a different underlying view (list vs detail) - see
-    tool_visibility.py's module docstring for why a literal HTTP OPTIONS
-    request is the wrong tool for this: InvenTree's OAuth2 scope resolver
-    (map_scope() in InvenTree/permissions.py) hardcodes OPTIONS to a generic
-    "g:read" scope regardless of resource, while GET requires the real
-    resource-specific scope (e.g. "r:view:part") - an OPTIONS-based check
-    would show a tool as available to a narrowly-scoped OAuth2 token that
-    the real GET call would then reject. RolePermission (used by
-    token/basic auth) doesn't have this problem (it maps OPTIONS to "view",
-    same as GET) - but checking via "GET" is correct for both cases, not
-    just the one that would otherwise silently break.
+    Checks the same HTTP method the tool will execute (GET for reads, POST
+    for creates). This is intentionally not an OPTIONS check: InvenTree's
+    OAuth2 scope resolver maps OPTIONS to a generic scope, while the real
+    method requires the resource-specific read/write scope. Using the actual
+    method also makes RolePermission evaluate the correct view/add/change
+    permission for the operation being advertised.
 
     Args:
         view_cls: the view class to check (e.g. part.api.PartList).
-        method: the HTTP method whose permission to check - "GET" for every
-            tool that exists today (all read-only).
+        method: the HTTP method whose permission to check, matching the
+            operation the MCP tool will actually execute.
 
     Returns:
         True if the current user (and OAuth2 token, if applicable) has
@@ -223,6 +238,7 @@ async def call_view(
     *,
     query_params: dict[str, Any] | None = None,
     data: dict[str, Any] | None = None,
+    viewset_action: str | None = None,
     **view_kwargs: Any,
 ) -> Any:
     """Invoke an existing InvenTree DRF view class as the current MCP user.
@@ -236,6 +252,8 @@ async def call_view(
         path: the API path being emulated (only used for logging/routing context, not resolved).
         query_params: query string parameters (GET requests).
         data: request body (write requests).
+        viewset_action: optional explicit DRF ViewSet action name for custom
+            endpoints such as PurchaseOrderViewSet.issue or .receive.
         view_kwargs: extra kwargs the URL pattern would normally supply (e.g. pk=...).
 
     Returns:
@@ -279,5 +297,6 @@ async def call_view(
         path,
         query_params=query_params,
         data=data,
+        viewset_action=viewset_action,
         **view_kwargs,
     )

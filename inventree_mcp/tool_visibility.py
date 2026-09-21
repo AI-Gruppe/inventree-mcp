@@ -1,36 +1,16 @@
 """Filter tools/list results down to what the current caller can actually use.
 
-Every tool is always *registered* (so its schema/description stays a single
-source of truth - see output_schemas.py) - but a caller without the
-underlying API endpoint's permission would only ever get a ToolError from
-actually calling it. This makes a real tools/list request reflect that up
-front: a tool is only listed if the current user (and, for OAuth2 requests,
-their token's scope) can really reach the resource it wraps - determined by
-running the *real* permission check via proxy.user_has_access() (RolePermission
-/ OAuth2 scope, the same InvenTree.permissions machinery call_view() itself
-relies on), not a hand-rolled guess.
+Every tool remains registered, but tools/list only advertises tools whose
+underlying InvenTree API permission check succeeds for the method the tool
+actually executes. Read tools are checked with GET; write tools are checked
+with POST and are additionally hidden while MCP_READ_ONLY is enabled.
 
-This is a discovery-time convenience, not a new security boundary:
-proxy.call_view() remains the only real enforcement point, and still runs in
-full for every actual tool call regardless of what tools/list showed - a
-client that calls a "hidden" tool by name gets exactly the same ToolError it
-always did (see MCPServer.call_tool()'s own tool lookup, which never
-consults this module). Don't rely on this module to prevent access to
-anything; it only prevents *advertising* access that doesn't exist.
-
-Why a real permission check via "GET" rather than a literal HTTP OPTIONS
-request (the obvious-looking shortcut): InvenTree's OAuth2 scope resolver
-(map_scope() in InvenTree/permissions.py) hardcodes OPTIONS to a generic
-"g:read" scope for every view regardless of resource, while GET requires the
-real resource-specific scope (e.g. "r:view:part"). An OPTIONS-based check
-would show a tool as available to an OAuth2 token scoped down to "g:read"
-only, even though the real GET call that tool actually makes would then be
-rejected - silently defeating the exact "narrow a token below the user's
-role" scenario this plugin exists to support correctly. Checking "GET"
-instead sidesteps that gap entirely (and is also correct for the
-role/RolePermission path, which maps OPTIONS and GET to the same "view"
-permission anyway - see proxy.user_has_access()'s docstring for the full
-comparison).
+This is discovery-time convenience, not the security boundary:
+proxy.call_view() still performs the real authenticated API dispatch and
+enforces MCP_READ_ONLY on every tool invocation, even if a client calls a
+hidden tool by name. Permission discovery deliberately uses the actual HTTP
+method rather than OPTIONS so InvenTree's RolePermission and OAuth2 scope
+mapping evaluate the same resource-specific permission as the eventual call.
 """
 
 from __future__ import annotations
@@ -38,11 +18,14 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from asgiref.sync import sync_to_async
+
 from mcp.types import ListToolsResult, PaginatedRequestParams
 
 from . import proxy
-from .context import has_bound_identity
+from .context import has_bound_identity, has_current_user
 from .mcp_server import mcp
+from .settings import get_plugin_setting
 from .tools.discovery import RESOURCE_LOADERS
 
 if TYPE_CHECKING:
@@ -74,8 +57,10 @@ _TOOL_RESOURCES: dict[str, str] = {
     "get_purchase_order_line": "purchase_order_line",
     "list_sales_orders": "sales_order",
     "get_sales_order": "sales_order",
+    "create_sales_order": "sales_order",
     "list_sales_order_lines": "sales_order_line",
     "get_sales_order_line": "sales_order_line",
+    "create_sales_order_line": "sales_order_line",
     "list_sales_order_allocations": "sales_order_allocation",
     "get_sales_order_allocation": "sales_order_allocation",
     "list_build_orders": "build_order",
@@ -116,6 +101,26 @@ _TOOL_RESOURCES: dict[str, str] = {
     "get_project_code": "project_code",
 }
 
+# Most tools are reads. Write tools explicitly declare the HTTP method whose
+# real InvenTree permission check must succeed before they are advertised.
+_TOOL_METHODS: dict[str, str] = {
+    "create_sales_order": "POST",
+    "create_sales_order_line": "POST",
+}
+
+# These mutation tools dispatch to a registry-selected resource/action based on
+# their arguments, so they cannot be permission-filtered to one resource at
+# tools/list time. They are advertised only to authenticated callers; the
+# selected InvenTree view performs the real permission check at execution.
+_MUTATION_DISPATCH_TOOLS = {
+    "create_resource",
+    "update_resource",
+    "delete_resource",
+    "bulk_update_resource",
+    "bulk_delete_resource",
+    "invoke_action",
+}
+
 
 async def visible_tool_names(names: Iterable[str]) -> set[str]:
     """Return the subset of *names* the current bound user can actually call.
@@ -144,21 +149,32 @@ async def visible_tool_names(names: Iterable[str]) -> set[str]:
         return set(names)
 
     visible: set[str] = set()
-    resource_access: dict[str, bool] = {}
+    resource_access: dict[tuple[str, str], bool] = {}
+    read_only = await sync_to_async(get_plugin_setting)("MCP_READ_ONLY")
 
     for name in names:
+        if name in _MUTATION_DISPATCH_TOOLS:
+            if has_current_user() and not read_only:
+                visible.add(name)
+            continue
+
         resource = _TOOL_RESOURCES.get(name)
         if resource is None:
             visible.add(name)
             continue
 
-        if resource not in resource_access:
+        method = _TOOL_METHODS.get(name, "GET")
+        if method != "GET" and read_only:
+            continue
+
+        access_key = (resource, method)
+        if access_key not in resource_access:
             view_cls = RESOURCE_LOADERS[resource]()
-            resource_access[resource] = view_cls is not None and (
-                await proxy.user_has_access(view_cls, "GET")
+            resource_access[access_key] = view_cls is not None and (
+                await proxy.user_has_access(view_cls, method)
             )
 
-        if resource_access[resource]:
+        if resource_access[access_key]:
             visible.add(name)
 
     return visible
