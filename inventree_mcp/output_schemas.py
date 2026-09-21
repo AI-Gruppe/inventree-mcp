@@ -73,6 +73,13 @@ from .mcp_server import mcp
 from .schema_introspection import paginated_schema, serializer_schema
 
 _PERMISSIVE_OUTPUT_MODEL = RootModel[dict[str, Any]]
+_PERMISSIVE_ANY_OUTPUT_MODEL = RootModel[Any]
+
+_ANY_OUTPUT_TOOLS = {
+    "bulk_update_resource",
+    "bulk_delete_resource",
+    "invoke_action",
+}
 
 _OUTPUT_SCHEMAS = {
     "list_parts": paginated_schema(PartSerializer),
@@ -135,9 +142,9 @@ _OUTPUT_SCHEMAS = {
     "create_resource": {"type": "object"},
     "update_resource": {"type": "object"},
     "delete_resource": {"type": "object"},
-    "bulk_update_resource": {"type": "object"},
-    "bulk_delete_resource": {"type": "object"},
-    "invoke_action": {"type": "object"},
+    "bulk_update_resource": {"type": ["object", "array"]},
+    "bulk_delete_resource": {"type": ["object", "array"]},
+    "invoke_action": {"type": ["object", "array"]},
     "make_web_link": {
         "type": "object",
         "properties": {
@@ -154,4 +161,8 @@ def apply() -> None:
         tool = mcp._tool_manager.get_tool(name)
         if tool is not None:
             tool.fn_metadata.output_schema = schema
-            tool.fn_metadata.output_model = _PERMISSIVE_OUTPUT_MODEL
+            tool.fn_metadata.output_model = (
+                _PERMISSIVE_ANY_OUTPUT_MODEL
+                if name in _ANY_OUTPUT_TOOLS
+                else _PERMISSIVE_OUTPUT_MODEL
+            )
