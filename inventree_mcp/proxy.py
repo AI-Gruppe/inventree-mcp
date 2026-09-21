@@ -41,7 +41,10 @@ _DETAIL_ACTIONS = {
 
 
 def _viewset_actions(
-    view_cls: type[APIView], method: str, view_kwargs: dict[str, Any]
+    view_cls: type[APIView],
+    method: str,
+    view_kwargs: dict[str, Any],
+    viewset_action: str | None = None,
 ) -> dict[str, str] | None:
     """Build the `actions` mapping DRF ViewSet.as_view() requires, or None for a plain view.
 
@@ -59,6 +62,9 @@ def _viewset_actions(
         return None
 
     method = method.upper()
+    if viewset_action is not None:
+        return {method.lower(): viewset_action}
+
     actions = _DETAIL_ACTIONS if "pk" in view_kwargs else _COLLECTION_ACTIONS
     action = actions[method]
     return {method.lower(): action}
@@ -71,6 +77,7 @@ def _call_view_sync(
     *,
     query_params: dict[str, Any] | None = None,
     data: dict[str, Any] | None = None,
+    viewset_action: str | None = None,
     **view_kwargs: Any,
 ) -> Any:
     user = get_current_user()
@@ -90,7 +97,7 @@ def _call_view_sync(
     else:
         request = factory_method(path, data=data or {}, format="json")
 
-    actions = _viewset_actions(view_cls, method, view_kwargs)
+    actions = _viewset_actions(view_cls, method, view_kwargs, viewset_action)
 
     if oauth2_token is not None:
         # The MCP request itself was OAuth2-authenticated: make the proxied
@@ -220,6 +227,7 @@ async def call_view(
     *,
     query_params: dict[str, Any] | None = None,
     data: dict[str, Any] | None = None,
+    viewset_action: str | None = None,
     **view_kwargs: Any,
 ) -> Any:
     """Invoke an existing InvenTree DRF view class as the current MCP user.
@@ -233,6 +241,8 @@ async def call_view(
         path: the API path being emulated (only used for logging/routing context, not resolved).
         query_params: query string parameters (GET requests).
         data: request body (write requests).
+        viewset_action: optional explicit DRF ViewSet action name for custom
+            endpoints such as PurchaseOrderViewSet.issue or .receive.
         view_kwargs: extra kwargs the URL pattern would normally supply (e.g. pk=...).
 
     Returns:
@@ -276,5 +286,6 @@ async def call_view(
         path,
         query_params=query_params,
         data=data,
+        viewset_action=viewset_action,
         **view_kwargs,
     )
